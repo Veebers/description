@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/juju/errors"
+	"github.com/juju/loggo"
 	"github.com/juju/schema"
 )
+
+var logger = loggo.GetLogger("veebers")
 
 // HasStatus defines the common methods for setting and getting status
 // entries for the various entities.
@@ -30,25 +33,29 @@ type Status interface {
 	Message() string
 	Data() map[string]interface{}
 	Updated() time.Time
+	NeverSet() bool
 }
 
 // StatusArgs is an argument struct used to set the agent, application, or
 // workload status.
 type StatusArgs struct {
-	Value   string
-	Message string
-	Data    map[string]interface{}
-	Updated time.Time
+	Value    string
+	Message  string
+	Data     map[string]interface{}
+	Updated  time.Time
+	NeverSet bool
 }
 
 func newStatus(args StatusArgs) *status {
+	logger.Criticalf("> creating new status.")
 	return &status{
 		Version: 1,
 		StatusPoint_: StatusPoint_{
-			Value_:   args.Value,
-			Message_: args.Message,
-			Data_:    args.Data,
-			Updated_: args.Updated.UTC(),
+			Value_:    args.Value,
+			Message_:  args.Message,
+			Data_:     args.Data,
+			Updated_:  args.Updated.UTC(),
+			NeverSet_: args.NeverSet,
 		},
 	}
 }
@@ -63,10 +70,11 @@ func newStatusHistory() StatusHistory_ {
 // of an entity at a point in time. Used in the serialization of
 // both status and StatusHistory_.
 type StatusPoint_ struct {
-	Value_   string                 `yaml:"value"`
-	Message_ string                 `yaml:"message,omitempty"`
-	Data_    map[string]interface{} `yaml:"data,omitempty"`
-	Updated_ time.Time              `yaml:"updated"`
+	Value_    string                 `yaml:"value"`
+	Message_  string                 `yaml:"message,omitempty"`
+	Data_     map[string]interface{} `yaml:"data,omitempty"`
+	Updated_  time.Time              `yaml:"updated"`
+	NeverSet_ bool                   `yaml:"neverset"`
 }
 
 type status struct {
@@ -97,6 +105,11 @@ func (a *StatusPoint_) Data() map[string]interface{} {
 // Updated implements Status.
 func (a *StatusPoint_) Updated() time.Time {
 	return a.Updated_
+}
+
+// Updated implements Status.
+func (a *StatusPoint_) NeverSet() bool {
+	return a.NeverSet_
 }
 
 func importStatus(source map[string]interface{}) (*status, error) {
@@ -169,6 +182,7 @@ var statusDeserializationFuncs = map[int]statusDeserializationFunc{
 	1: importStatusV1,
 }
 
+// I suspect I will need to add to this.
 func importStatusV1(source map[string]interface{}) (StatusPoint_, error) {
 	fields := schema.Fields{
 		"value":   schema.String(),
